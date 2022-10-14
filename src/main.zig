@@ -4,6 +4,7 @@ const mod = std.math.mod;
 const rem = std.math.rem;
 const math_pow = std.math.pow;
 const divTrunc = std.math.divTrunc;
+const random = std.crypto.random;
 
 pub fn ModularArithmetic(comptime T: type) type {
     return struct {
@@ -36,9 +37,7 @@ pub fn ModularArithmetic(comptime T: type) type {
             if (exponent > 0) {
                 return try self.powPositive(exponent);
             } else {
-                // var n = try self.inverse();
-                // return try n.powPositive(exponent);
-                return error.NegativeExponentiationNotWorks;
+                return self.inverse();
             }
         }
 
@@ -57,7 +56,7 @@ pub fn ModularArithmetic(comptime T: type) type {
         }
 
         fn inverse(self: Self) !Self {
-            return solveCongruence(self.a, 1, self.m);
+            return Self.solveCongruence(self.a, 1, self.m);
         }
 
         /// a*x ≡ b mod m
@@ -101,6 +100,33 @@ pub const utils = struct {
         }
         return result;
     }
+
+    pub fn fermatTest(comptime T: type, n: T, k: usize) !bool {
+        if (n == 1 or n == 4) return false;
+        if (n == 2 or n == 3) return true;
+        var i: usize = 0;
+        while (i < k) : (i += 1) {
+            const Mod = ModularArithmetic(T);
+            var rand = random.intRangeAtMost(T, 2, n - 2);
+            var a = try Mod.initPositive(rand, n);
+            a = try a.pow(n - 1);
+            if (utils.gcd(T, a.a, n) == 1 and a.a != 1) return false;
+        }
+        return true;
+    }
+
+    pub fn getRandomPrimeUsingFermatTest(
+        comptime T: type,
+        start: T,
+        end: T,
+        k: usize,
+    ) !T {
+        var rand = random.intRangeAtMost(T, start, end);
+        while (!try fermatTest(T, rand, k)) {
+            rand = random.intRangeAtMost(T, start, end);
+        }
+        return rand;
+    }
 };
 
 test "basic" {
@@ -130,8 +156,8 @@ test "power" {
     try testing.expect((try n.pow(235)).a == 3);
     n = try Mod.initPositive(707, 17);
     try testing.expect((try n.pow(321)).a == 10);
-    n = try Mod.initPositive(2, 7);
-    try testing.expectError(error.NegativeExponentiationNotWorks, n.pow(-5));
+    n = try Mod.initPositive(2, 9);
+    try testing.expect((try n.pow(-1)).a == 5);
 }
 
 test "linear congruence" {
@@ -142,11 +168,23 @@ test "linear congruence" {
 }
 
 test "inverse" {
-    const Mod = ModularArithmetic(u16);
+    const Mod = ModularArithmetic(i16);
     var n = try Mod.initPositive(2, 5);
     try testing.expect((try n.inverse()).a == 3);
     n = try Mod.initPositive(47, 82);
     try testing.expect((try n.inverse()).a == 7);
     n = try Mod.initPositive(48, 82);
     try testing.expectError(error.ManyOrZeroSolutions, n.inverse());
+}
+
+test "fermat test" {
+    try testing.expect(try utils.fermatTest(u32, 1024, 100) == false);
+    try testing.expect(try utils.fermatTest(u32, 271, 100) == true);
+    try testing.expect(try utils.fermatTest(u32, 271, 100) == true);
+    try testing.expect(try utils.fermatTest(u32, 2147483647, 100) == true);
+    // Carmichael Number 5*13*17
+    try testing.expect(try utils.fermatTest(u32, 1105, 100) == true);
+
+    var rand = try utils.getRandomPrimeUsingFermatTest(u16, 5, 50, 23);
+    try testing.expect((try utils.fermatTest(u16, rand, 42)) == true);
 }
